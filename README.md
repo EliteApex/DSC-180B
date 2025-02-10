@@ -20,14 +20,19 @@ conda activate PPIOMEGA_env
 
 ### **3. Running the Project**
 
-Once the environment is set up, you can run the project using:
+Once the environment is set up, you can run the model in command line using:
 
 ```bash
-python src/run_model.py 
+python src/run_models.py --version version_num
 ```
 
-If you would like to use our preprocessed data, you can directly use this command. 
+or run the model in a jupyter notebook put in the directory `PPI-OMEGA` using:
 
+```bash
+%run src/run_models.py --version version_num
+```
+
+where `version_num` = 1 or 2 or 3 depending on the input features you'd like.
 
 ## Project Structure
 
