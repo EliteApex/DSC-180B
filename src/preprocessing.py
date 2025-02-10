@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from scipy.sparse import save_npz
+from scipy.sparse import save_npz, coo_matrix
 
 from pyensembl import EnsemblRelease # Python interface to Ensembl reference genome metadata
 match_data = EnsemblRelease(104)
@@ -45,7 +45,7 @@ filtered_ppi_data.to_csv('../Data/filtered_PPI.csv',index=False)
 
 # RNA-seq Dataset
 ## The data is sourced and unzipped from https://www.proteinatlas.org/download/tsv/rna_tissue_gtex.tsv.zip
-rna_df = pd.read_csv('rna_tissue_gtex.tsv', sep='\t')
+rna_df = pd.read_csv('../Data/rna_tissue_gtex.tsv', sep='\t')
 rna_df = rna_df[['Gene','Tissue','TPM']] # keep necessary columns
 
 gene_tissue_pivot = rna_df.pivot_table(
@@ -59,12 +59,12 @@ gene_tissue_pivot.reset_index(inplace=True)
 
 ## Match Gene IDs in RNA dataset to Protein IDs
 all_proteins = set(ppi_data['protein1']).union(set(ppi_data['protein2']))
-all_proteins = list(all_proteins)
+all_proteins = [i.replace('9606.','') for i in all_proteins]
 
 protein_to_gene = {}
 for protein in all_proteins:
     try:
-        gene_id = data.gene_id_of_protein_id(protein)
+        gene_id = match_data.gene_id_of_protein_id(protein)
         protein_to_gene[protein] = gene_id
     except ValueError:
         continue
@@ -88,12 +88,12 @@ protein_keep = match_feature_mat['Protein']
 rna_pca_df = pd.DataFrame(principal_components_rna)
 rna_pca_df.index = protein_keep
 match_feature_mat.to_csv("../Data/PPI_RNA_seq_full.csv", index=False)
-print("Percentage of proteins after preprocessing with proper RNA feature: " + str(feature_matrix_keep.shape[0]/(ppi_data['protein1'].nunique())))
+print("Percentage of proteins after preprocessing with proper RNA feature: " + str(match_feature_mat.shape[0]/(ppi_data['protein1'].nunique())))
 
 
 # IHC Protein Expression Dataset
 ## The data is sourced and unzipped from https://www.proteinatlas.org/download/tsv/normal_ihc_data.tsv.zip 
-protein_df = pd.read_csv('normal_ihc_data.tsv', sep='\t')
+protein_df = pd.read_csv('../Data/normal_ihc_data.tsv', sep='\t')
 protein_df.dropna(inplace=True)
 
 ## Encode `Level` column
@@ -174,5 +174,7 @@ feature_df_filtered = feature_df.dropna(subset=['node_idx']).sort_values(by='nod
 feature_matrix = feature_df_filtered.iloc[:, 1:-1].values  # exclude 'Protein' and 'node_idx'
 feature_matrix = StandardScaler().fit_transform(feature_matrix)
 assert adj_matrix.shape[0] == feature_matrix.shape[0]
-feature_matrix.to_csv("../Data/PPI_RNA_Protein_combined.csv", index=False)
+feature_mat_processed = pd.DataFrame(feature_matrix)
+feature_mat_processed.index = feature_df_filtered.index
+feature_mat_processed.to_csv("../Data/PPI_RNA_Protein_combined.csv", index=False)
 save_npz("../Data/adj_matrix.npz", adj_matrix)

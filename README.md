@@ -23,8 +23,10 @@ conda activate PPIOMEGA_env
 Once the environment is set up, you can run the project using:
 
 ```bash
-python src/main.py 
+python src/run_model.py 
 ```
+
+If you would like to use our preprocessed data, you can directly use this command. 
 
 
 ## Project Structure
