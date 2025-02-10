@@ -20,32 +20,14 @@ args = parser.parse_args()
 
 # Load Data
 ppi_df = pd.read_csv('9606.protein.links.v12.0.txt', delimiter=' ')
-rna_pca_df = pd.read_csv('Data/PPI_RNA_seq_10PCs.csv')
-pe_pca_df = pd.read_csv('Data/PPI_protein_expression_10PCs.csv')
+rna_pca_df = pd.read_csv('../Data/PPI_RNA_seq_10PCs.csv')
+pe_pca_df = pd.read_csv('../Data/PPI_protein_expression_10PCs.csv')
+combined_feature_df = pd.read_csv('../Data/PPI_RNA_Protein_combined.csv')
 
-# Helper function to find common prefix
-def find_common_prefix(strings):
-    if not strings:
-        return ""
-    prefix = strings[0]
-    for string in strings[1:]:
-        while not string.startswith(prefix):
-            prefix = prefix[:-1]
-            if not prefix:
-                return ""
-    return prefix
-
-# Removing prefixes from protein identifiers
-protein1_prefix = find_common_prefix(ppi_df['protein1'].tolist())
-ppi_df['protein1'] = ppi_df['protein1'].str.replace(protein1_prefix, '', regex=False)
-ppi_df['protein2'] = ppi_df['protein2'].str.replace(protein1_prefix, '', regex=False)
-rna_pca_df['Protein'] = rna_pca_df['Protein'].str.replace(find_common_prefix(rna_pca_df['Protein'].tolist()), '', regex=False)
-pe_pca_df['Protein'] = pe_pca_df['Protein'].str.replace(find_common_prefix(pe_pca_df['Protein'].tolist()), '', regex=False)
 
 # Select Version
 if args.version == 1:
     print("Running Version 1: Combined Features (RNA + Protein Expression)")
-    combined_feature_df = rna_pca_df.merge(pe_pca_df, on='Protein')
     valid_nodes = set(combined_feature_df['Protein'])
 elif args.version == 2:
     print("Running Version 2: RNA Features Only")
@@ -53,6 +35,7 @@ elif args.version == 2:
 elif args.version == 3:
     print("Running Version 3: Protein Expression Features Only")
     valid_nodes = set(pe_pca_df['Protein'])
+
 
 # Filter PPI Data
 ppi_df_filtered = ppi_df[ppi_df['protein1'].isin(valid_nodes) & ppi_df['protein2'].isin(valid_nodes)]

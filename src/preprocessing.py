@@ -176,5 +176,5 @@ feature_matrix = StandardScaler().fit_transform(feature_matrix)
 assert adj_matrix.shape[0] == feature_matrix.shape[0]
 feature_mat_processed = pd.DataFrame(feature_matrix)
 feature_mat_processed.index = feature_df_filtered.index
-feature_mat_processed.to_csv("../Data/PPI_RNA_Protein_combined.csv", index=False)
+feature_mat_processed.to_csv("../Data/PPI_RNA_Protein_combined.csv")
 save_npz("../Data/adj_matrix.npz", adj_matrix)
