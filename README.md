@@ -1,6 +1,8 @@
 # PPI-OMEGA
 
-This is the project repository for Data Science Capstone at UCSD in 2025 by Team A06-1.
+This is the project repository for Data Science Capstone at UCSD in 2025 by Team A06-1. 
+
+Protein-Protein Interaction with Omics-Enhanced Graph Autoencoder, a.k.a. PPI-OMEGA, is a Variational Graph Autoencoder (VGAE)-based framework designed to improve Protein-Protein Interaction (PPI) predictions by integrating multi-omics data. Unlike traditional models that rely solely on static network topology, PPI-OMEGA incorporates RNA expression profiles and protein expression data to learn biologically meaningful representations.
 
 
 ## Installation and Execution Guide
@@ -43,16 +45,20 @@ The repository is organized as follows:
 ├── src/                # Source code for the project
 │   ├── preprocessing.py      # script to preprocess the data and create the input feature matrix 
 │   ├── model.py      # script of essential components of the model
-│   └── main.py         # Entry point for running the project
+│   └── run_models.py         # Entry point for running the project
 ├── environment.yml     # Conda environment file
 ├── README.md           # Documentation
 └── Data/               # Directory for dataset, stores original and intermediate data files
+   ├── adj_matrix.npz      # preprocessed PPI adjacency matrix 
    ├── filtered_PPI.csv      # Top 5% scored PPI dataset
+   ├── normal_ihc_data.tsv       # original IHC protein expression data sourced from the Human Protein Atlas
    ├── PPI_protein_expression_full.csv     # full IHC protein expression feature matrix
    ├── PPI_protein_expression_10PCs.csv     # 10 principle components for the protein expression feature matrix
+   ├── PPI_RNA_Protein_combined.csv     # preprocessed combined feature matrix
    ├── PPI_RNA_seq_full.csv     # full GTEx RNA-seq feature matrix
    ├── PPI_RNA_seq_10PCs.csv     # 10 principle components for the GTEx RNA-seq feature matrix
-   └── protein_gene_conversion.csv         # conversion file between protein and gene IDs
+   ├── protein_gene_conversion.csv         # conversion file between protein and gene IDs
+   └── rna_tissue_gtex.tsv         # original GTEx RNA expression data sourced from the Human Protein Atlas
 ```
 
 <!-- `sample_data.py`: a script to sample a subset of data for experimenting and testing purpose. -->
