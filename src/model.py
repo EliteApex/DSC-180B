@@ -1,10 +1,10 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, VGAE, GATConv
+import pandas as pd
+from torch_geometric.nn import GCNConv, VGAE
 import torch.nn as nn
 from sklearn.metrics import precision_recall_curve, auc, roc_auc_score, average_precision_score
-
 
 
 class GCNEncoder(torch.nn.Module):
@@ -23,10 +23,20 @@ class GCNEncoder(torch.nn.Module):
         x = self.dropout(x)
         mu = self.conv_mu(x, edge_index)
         logstd = self.conv_logstd(x, edge_index)
-        return mu, logstd
-    
+        return mu, logstd  # Return both mean and log standard deviation
 
-def train(model, data, optimizer, patience=60, delta=0.001, checkpoint_path="best_model.pth"):
+
+class VariationalGAE(VGAE):
+    def __init__(self, encoder):
+        super(VariationalGAE, self).__init__(encoder)
+
+    def encode(self, x, edge_index):
+        mu, logstd = self.encoder(x, edge_index)
+        z = self.reparameterize(mu, logstd)
+        return z, mu, logstd  # Return z, mu, and logstd
+
+
+def train(model, data, optimizer, patience=60, delta=0.001, checkpoint_path="best_model.pth", save_csv_path="latent_parameters.csv"):
     best_auc = float('-inf')
     counter = 0
     num_epochs = 200
@@ -36,10 +46,12 @@ def train(model, data, optimizer, patience=60, delta=0.001, checkpoint_path="bes
     precision_values = []
     recall_values = []
     
+    latent_parameters = []  # Store mu and logstd for each epoch
+
     for epoch in range(num_epochs):
         model.train()
         optimizer.zero_grad()
-        z = model.encode(data.x, data.train_pos_edge_index)
+        z, mu, logstd = model.encode(data.x, data.train_pos_edge_index)
         loss = model.recon_loss(z, data.train_pos_edge_index)
         loss += (1 / data.num_nodes) * model.kl_loss()
         loss.backward()
@@ -53,6 +65,13 @@ def train(model, data, optimizer, patience=60, delta=0.001, checkpoint_path="bes
         recall_values.append(recall)
 
         print(f"Epoch {epoch + 1}/{num_epochs} - Loss: {loss:.4f}, AUC: {auc_score:.4f}, AP: {ap_score:.4f}")
+
+        # Save the latent parameters (mu, logstd) for each node in this epoch
+        latent_parameters.append({
+            "epoch": epoch + 1,
+            "mu": mu.detach().cpu().numpy().tolist(),
+            "logstd": logstd.detach().cpu().numpy().tolist()
+        })
 
         # Early stopping logic
         if auc_score > best_auc + delta:
@@ -69,6 +88,9 @@ def train(model, data, optimizer, patience=60, delta=0.001, checkpoint_path="bes
     model.load_state_dict(torch.load(checkpoint_path))
     print(f"Best model restored with AUC: {best_auc:.4f}")
 
+    # Save latent parameters to a CSV file
+    save_latent_parameters(latent_parameters, save_csv_path)
+
     # Store metrics in a dictionary
     metrics_dict = {
         "AUC": auc_values,
@@ -83,7 +105,7 @@ def train(model, data, optimizer, patience=60, delta=0.001, checkpoint_path="bes
 def test(model, data):
     model.eval()
     with torch.no_grad():
-        z = model.encode(data.x, data.train_pos_edge_index)
+        z, mu, logstd = model.encode(data.x, data.train_pos_edge_index)
 
         # Compute predicted scores
         pos_edge_scores = model.decoder(z, data.test_pos_edge_index).sigmoid().cpu().numpy()
@@ -101,3 +123,18 @@ def test(model, data):
         precision, recall, _ = precision_recall_curve(y_true, y_scores)
 
     return auc_score, ap_score, precision, recall
+
+
+def save_latent_parameters(latent_parameters, filename):
+    """
+    Saves the latent space parameters (mu, logstd) for each epoch into a CSV file.
+    """
+    rows = []
+    for entry in latent_parameters:
+        epoch = entry["epoch"]
+        for node_idx, (mu_val, logstd_val) in enumerate(zip(entry["mu"], entry["logstd"])):
+            rows.append({"epoch": epoch, "node": node_idx, "mu": mu_val, "logstd": logstd_val})
+
+    df = pd.DataFrame(rows)
+    df.to_csv(filename, index=False)
+    print(f"Saved latent parameters to {filename}")
