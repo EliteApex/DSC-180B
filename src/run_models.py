@@ -11,6 +11,8 @@ from scipy.sparse import coo_matrix
 from sklearn.preprocessing import StandardScaler
 from model import GCNEncoder, train, test
 import argparse
+from sklearn.preprocessing import StandardScaler
+
 
 # Argument Parser
 parser = argparse.ArgumentParser(description="Run VGAE on different versions of protein data")
@@ -45,10 +47,13 @@ node_to_idx = {node: i for i, node in enumerate(filtered_nodes)}
 ppi_df_filtered['protein1_idx'] = ppi_df_filtered['protein1'].map(node_to_idx)
 ppi_df_filtered['protein2_idx'] = ppi_df_filtered['protein2'].map(node_to_idx)
 
+
+scaler = StandardScaler()
+ppi_df_filtered['standardized_score'] = scaler.fit_transform(ppi_df_filtered[['combined_score']])
+
 adj_matrix = coo_matrix(
-    (ppi_df_filtered['combined_score'], (ppi_df_filtered['protein1_idx'], ppi_df_filtered['protein2_idx'])),
-    shape=(len(filtered_nodes), len(filtered_nodes))
-)
+    (ppi_df_filtered['standardized_score'], (ppi_df_filtered['protein1_idx'], ppi_df_filtered['protein2_idx'])),
+    shape=(len(filtered_nodes), len(filtered_nodes)))
 
 # Prepare Feature Matrix
 if args.version == 1:
@@ -102,6 +107,9 @@ elif args.version == 3:
     metrics_filename = "metrics_pe.npz"
 
 # Save everything in a single npz file with `allow_pickle=True`
+
+#use savez instead of compressed 
+# save_txt
 np.savez_compressed(metrics_filename, 
                     auc_values=auc_values, 
                     ap_values=ap_values, 
@@ -110,5 +118,3 @@ np.savez_compressed(metrics_filename,
                     allow_pickle=True)
 
 print(f"All metrics saved to {metrics_filename}")
-
-
