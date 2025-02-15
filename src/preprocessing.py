@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from scipy.sparse import save_npz, coo_matrix
 
 from pyensembl import EnsemblRelease # Python interface to Ensembl reference genome metadata
@@ -140,18 +140,17 @@ protein1_prefix = find_common_prefix(filtered_ppi_data['protein1'].tolist())
 protein2_prefix = find_common_prefix(filtered_ppi_data['protein2'].tolist())
 print("Common prefix in 'protein1':", protein1_prefix)
 print("Common prefix in 'protein2':", protein2_prefix)
-rna_seq_prefix = find_common_prefix(rna_pca_df['Protein'].tolist())
+rna_seq_prefix = find_common_prefix(rna_pca_df.index.tolist())
 print("Common prefix in 'rna seq proteins':", rna_seq_prefix)
-pe_prefix = find_common_prefix(pe_pca_df['Protein'].tolist())
+pe_prefix = find_common_prefix(pe_pca_df.index.tolist())
 print("Common prefix in 'protein expression proteins':", pe_prefix)
 assert protein1_prefix == protein2_prefix
 assert rna_seq_prefix == pe_prefix
-assert protein1_prefix == rna_seq_prefix
 
 filtered_ppi_data['protein1'] = filtered_ppi_data['protein1'].str.replace(protein1_prefix, '', regex=False)
 filtered_ppi_data['protein2'] = filtered_ppi_data['protein2'].str.replace(protein1_prefix, '', regex=False)
-rna_pca_df['Protein'] = rna_pca_df['Protein'].str.replace(rna_seq_prefix, '', regex=False)
-pe_pca_df['Protein'] = pe_pca_df['Protein'].str.replace(pe_prefix, '', regex=False)
+rna_pca_df.index = rna_pca_df.index.str.replace(rna_seq_prefix, '', regex=False)
+pe_pca_df.index = pe_pca_df.index.str.replace(pe_prefix, '', regex=False)
 
 ## Save the separate feature matrix
 rna_pca_df.to_csv("../Data/PPI_RNA_seq_10PCs.csv")
@@ -159,9 +158,11 @@ pe_pca_df.to_csv("../Data/PPI_protein_expression_10PCs.csv")
 
 ## Prepare for combined feature matrix
 feature_df = rna_pca_df.merge(pe_pca_df, on = 'Protein')
-valid_nodes = set(feature_df['Protein'])
+valid_nodes = set(feature_df.index)
 ppi_df_filtered = filtered_ppi_data[filtered_ppi_data['protein1'].isin(valid_nodes) & filtered_ppi_data['protein2'].isin(valid_nodes)]
 filtered_nodes = pd.concat([ppi_df_filtered['protein1'], ppi_df_filtered['protein2']]).unique()
+print(f"Number of proteins with valid features: {filtered_nodes.shape[0]}")
+
 node_to_idx = {node: i for i, node in enumerate(filtered_nodes)}
 ppi_df_filtered['protein1_idx'] = ppi_df_filtered['protein1'].map(node_to_idx)
 ppi_df_filtered['protein2_idx'] = ppi_df_filtered['protein2'].map(node_to_idx)
@@ -169,12 +170,25 @@ adj_matrix = coo_matrix(
     (ppi_df_filtered['combined_score'], (ppi_df_filtered['protein1_idx'], ppi_df_filtered['protein2_idx'])),
     shape=(len(filtered_nodes), len(filtered_nodes))
 )
-feature_df['node_idx'] = feature_df['Protein'].map(node_to_idx)
+
+### Minmax scale the protein interaction scores
+scaler = MinMaxScaler()
+ppi_df_filtered['score_scaled'] = scaler.fit_transform(ppi_df_filtered[['combined_score']])
+adj_matrix_scaled = coo_matrix(
+    (ppi_df_filtered['score_scaled'], (ppi_df_filtered['protein1_idx'], ppi_df_filtered['protein2_idx'])),
+    shape=(len(filtered_nodes), len(filtered_nodes))
+)
+
+feature_df['node_idx'] = feature_df.index.map(node_to_idx)
 feature_df_filtered = feature_df.dropna(subset=['node_idx']).sort_values(by='node_idx')
-feature_matrix = feature_df_filtered.iloc[:, 1:-1].values  # exclude 'Protein' and 'node_idx'
-feature_matrix = StandardScaler().fit_transform(feature_matrix)
+feature_matrix = feature_df_filtered.iloc[:, :-1].values  # exclude index 'Protein' and 'node_idx'
 assert adj_matrix.shape[0] == feature_matrix.shape[0]
+
 feature_mat_processed = pd.DataFrame(feature_matrix)
-feature_mat_processed.index = feature_df_filtered.index
-feature_mat_processed.to_csv("../Data/PPI_RNA_Protein_combined.csv")
+feature_mat_processed.to_csv("../Data/PPI_RNA_Protein_combined.csv", index=False)
 save_npz("../Data/adj_matrix.npz", adj_matrix)
+save_npz("../Data/adj_matrix_scaled.npz", adj_matrix_scaled)
+
+# To load the data:
+# adj_mat_scaled = np.load('../Data/adj_matrix_scaled.npz')
+# feature_mat_combined = pd.read_csv('../Data/PPI_RNA_Protein_combined.csv')
