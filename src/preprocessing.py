@@ -152,10 +152,6 @@ filtered_ppi_data['protein2'] = filtered_ppi_data['protein2'].str.replace(protei
 rna_pca_df.index = rna_pca_df.index.str.replace(rna_seq_prefix, '', regex=False)
 pe_pca_df.index = pe_pca_df.index.str.replace(pe_prefix, '', regex=False)
 
-## Save the separate feature matrix
-rna_pca_df.to_csv("../Data/PPI_RNA_seq_10PCs.csv")
-pe_pca_df.to_csv("../Data/PPI_protein_expression_10PCs.csv")
-
 ## Prepare for combined feature matrix
 feature_df = rna_pca_df.merge(pe_pca_df, on = 'Protein')
 valid_nodes = set(feature_df.index)
@@ -186,6 +182,10 @@ assert adj_matrix.shape[0] == feature_matrix.shape[0]
 
 feature_mat_processed = pd.DataFrame(feature_matrix)
 feature_mat_processed.to_csv("../Data/PPI_RNA_Protein_combined.csv", index=False)
+rna_only = feature_mat_processed.iloc[:,:10]
+protein_only = feature_mat_processed.iloc[:,10:]
+rna_only.to_csv("../Data/PPI_RNA_only.csv", index=False)
+protein_only.to_csv("../Data/PPI_Protein_only.csv", index=False)
 save_npz("../Data/adj_matrix.npz", adj_matrix)
 save_npz("../Data/adj_matrix_scaled.npz", adj_matrix_scaled)
 
