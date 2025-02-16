@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 from torch_geometric.data import Data
 import torch.nn as nn
 from torch_geometric.utils import from_scipy_sparse_matrix, train_test_split_edges, add_self_loops
-from scipy.sparse import coo_matrix
+from scipy.sparse import load_npz
 from sklearn.preprocessing import StandardScaler
-from model import GCNEncoder, train, test
+from model import GCNEncoder, train, test, VariationalGAE
 import argparse
 from sklearn.preprocessing import StandardScaler
 
@@ -21,55 +21,29 @@ parser.add_argument("--version", type=int, choices=[1, 2, 3], required=True,
 args = parser.parse_args()
 
 # Load Data
-ppi_df = pd.read_csv('9606.protein.links.v12.0.txt', delimiter=' ')
-rna_pca_df = pd.read_csv('../Data/PPI_RNA_seq_10PCs.csv')
-pe_pca_df = pd.read_csv('../Data/PPI_protein_expression_10PCs.csv')
+ppi_df = pd.read_csv('../Data/9606.protein.links.v12.0.txt', delimiter=' ')
+rna_pca_df = pd.read_csv('../Data/PPI_RNA_only.csv')
+pe_pca_df = pd.read_csv('../Data/PPI_protein_only.csv')
 combined_feature_df = pd.read_csv('../Data/PPI_RNA_Protein_combined.csv')
 
 
-# Select Version
+
+# Load Precomputed Adjacency Matrix
+adj_matrix = load_npz('../Data/adj_matrix_scaled.npz')  # Shape: (9466, 9466)
+
+# Select Feature Matrix Based on Version
 if args.version == 1:
     print("Running Version 1: Combined Features (RNA + Protein Expression)")
-    valid_nodes = set(combined_feature_df['Protein'])
+    feature_matrix = combined_feature_df.values  
 elif args.version == 2:
     print("Running Version 2: RNA Features Only")
-    valid_nodes = set(rna_pca_df['Protein'])
+    feature_matrix = rna_pca_df.values
 elif args.version == 3:
     print("Running Version 3: Protein Expression Features Only")
-    valid_nodes = set(pe_pca_df['Protein'])
+    feature_matrix = pe_pca_df.values
 
-
-# Filter PPI Data
-ppi_df_filtered = ppi_df[ppi_df['protein1'].isin(valid_nodes) & ppi_df['protein2'].isin(valid_nodes)]
-filtered_nodes = pd.concat([ppi_df_filtered['protein1'], ppi_df_filtered['protein2']]).unique()
-node_to_idx = {node: i for i, node in enumerate(filtered_nodes)}
-
-ppi_df_filtered['protein1_idx'] = ppi_df_filtered['protein1'].map(node_to_idx)
-ppi_df_filtered['protein2_idx'] = ppi_df_filtered['protein2'].map(node_to_idx)
-
-
-scaler = StandardScaler()
-ppi_df_filtered['standardized_score'] = scaler.fit_transform(ppi_df_filtered[['combined_score']])
-
-adj_matrix = coo_matrix(
-    (ppi_df_filtered['standardized_score'], (ppi_df_filtered['protein1_idx'], ppi_df_filtered['protein2_idx'])),
-    shape=(len(filtered_nodes), len(filtered_nodes)))
-
-# Prepare Feature Matrix
-if args.version == 1:
-    combined_feature_df['node_idx'] = combined_feature_df['Protein'].map(node_to_idx)
-    feature_df_filtered = combined_feature_df.dropna(subset=['node_idx']).sort_values(by='node_idx')
-elif args.version == 2:
-    rna_pca_df['node_idx'] = rna_pca_df['Protein'].map(node_to_idx)
-    feature_df_filtered = rna_pca_df.dropna(subset=['node_idx']).sort_values(by='node_idx')
-elif args.version == 3:
-    pe_pca_df['node_idx'] = pe_pca_df['Protein'].map(node_to_idx)
-    feature_df_filtered = pe_pca_df.dropna(subset=['node_idx']).sort_values(by='node_idx')
-
-feature_matrix = feature_df_filtered.iloc[:, 1:-1].values  # Exclude 'Protein' and 'node_idx'
+# Standardize Feature Matrix
 feature_matrix = StandardScaler().fit_transform(feature_matrix)
-
-assert adj_matrix.shape[0] == feature_matrix.shape[0]
 
 # Convert to PyG Data Format
 edge_index, edge_attr = from_scipy_sparse_matrix(adj_matrix)
@@ -82,37 +56,26 @@ data.train_pos_edge_index, _ = add_self_loops(data.train_pos_edge_index)
 # Define Model
 in_channels = data.x.shape[1]  
 out_channels = 32
-model = VGAE(GCNEncoder(in_channels, out_channels))
+model = VariationalGAE(GCNEncoder(in_channels, out_channels))
 optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=5e-4)
 
-# Train Model
+
 metrics_dict = train(model, data, optimizer)
 
 
+# Convert Metrics to NumPy Arrays
+auc_values = np.array(metrics_dict["AUC"])  
+ap_values = np.array(metrics_dict["AP"])  
+precision_values = np.array(metrics_dict["Precision"], dtype=object)  
+recall_values = np.array(metrics_dict["Recall"], dtype=object)  
 
-# Convert metrics to NumPy arrays
-auc_values = np.array(metrics_dict["AUC"])  # AUC values per epoch
-ap_values = np.array(metrics_dict["AP"])  # AP values per epoch
+# Determine Filename
+metrics_filename = f"metrics_version_{args.version}.npz"
 
-# Precision and Recall are lists of NumPy arrays (different lengths)
-precision_values = np.array(metrics_dict["Precision"], dtype=object)  # Store as object array
-recall_values = np.array(metrics_dict["Recall"], dtype=object)  # Store as object array
-
-# Determine filename based on version
-if args.version == 1:
-    metrics_filename = "metrics_combined.npz"
-elif args.version == 2:
-    metrics_filename = "metrics_rna.npz"
-elif args.version == 3:
-    metrics_filename = "metrics_pe.npz"
-
-# Save everything in a single npz file with `allow_pickle=True`
-
-#use savez instead of compressed 
-# save_txt
+# Save Metrics
 np.savez_compressed(metrics_filename, 
                     auc_values=auc_values, 
-                    ap_values=ap_values, 
+                    ap_values=ap_values,
                     precision_values=precision_values, 
                     recall_values=recall_values, 
                     allow_pickle=True)

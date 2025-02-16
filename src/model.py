@@ -7,6 +7,7 @@ import torch.nn as nn
 from sklearn.metrics import precision_recall_curve, auc, roc_auc_score, average_precision_score
 
 
+
 class GCNEncoder(torch.nn.Module):
     def __init__(self, in_channels, out_channels):
         super(GCNEncoder, self).__init__()
@@ -33,10 +34,25 @@ class VariationalGAE(VGAE):
     def encode(self, x, edge_index):
         mu, logstd = self.encoder(x, edge_index)
         z = self.reparameterize(mu, logstd)
-        return z, mu, logstd  # Return z, mu, and logstd
+
+        # Fix: Store mu and logstd inside the model
+        self.__mu__ = mu
+        self.__logstd__ = logstd
+
+        return z, mu, logstd
+
+    def reparameterize(self, mu, logstd):
+        """
+        Implements the reparameterization trick: z = mu + std * epsilon
+        where epsilon is a random sample from N(0, I).
+        """
+        std = torch.exp(logstd)  # Convert log-std to standard deviation
+        eps = torch.randn_like(std)  # Sample epsilon from N(0, I)
+        return mu + eps * std  # Apply reparameterization trick
 
 
-def train(model, data, optimizer, patience=60, delta=0.001, checkpoint_path="best_model.pth", save_csv_path="latent_parameters.csv"):
+
+def train(model, data, optimizer, patience=60, delta=0.01, checkpoint_path="best_model.pth", save_csv_path="latent_parameters.csv"):
     best_auc = float('-inf')
     counter = 0
     num_epochs = 200
